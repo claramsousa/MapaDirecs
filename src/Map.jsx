@@ -1,5 +1,7 @@
 import { motion, AnimatePresence } from "framer-motion";
-import { useState } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
+import { getMultiPolygonCentroid } from "./utils/svgGeometry";
+import { lightenHex } from "./utils/colorUtils";
 
 const infoDirecs = {
   "1ª DIREC": { sede: "Natal", diretor: "Nome do Diretor(a) 1" },
@@ -12,12 +14,31 @@ const infoDirecs = {
   "8ª DIREC": { sede: "Angicos", diretor: "Nome do Diretor(a) 8" },
   "9ª DIREC": { sede: "Currais Novos", diretor: "Nome do Diretor(a) 9" },
   "10ª DIREC": { sede: "Caicó", diretor: "Nome do Diretor(a) 10" },
-  "11ª DIREC": { sede: "Açu", diretor: "Nome do Diretor(a) 11" },
+  "11ª DIREC": { sede: "Assú", diretor: "Nome do Diretor(a) 11" },
   "12ª DIREC": { sede: "Mossoró", diretor: "Nome do Diretor(a) 12" },
   "13ª DIREC": { sede: "Apodi", diretor: "Nome do Diretor(a) 13" },
   "14ª DIREC": { sede: "Umarizal", diretor: "Nome do Diretor(a) 14" },
   "15ª DIREC": { sede: "Pau dos Ferros", diretor: "Nome do Diretor(a) 15" },
   "16ª DIREC": { sede: "João Câmara", diretor: "Nome do Diretor(a) 16" },
+};
+
+const coresDirecs = {
+  "1ª DIREC": "#41909A",
+  "2ª DIREC": "#8D4170",
+  "3ª DIREC": "#B7DCCA",
+  "4ª DIREC": "#98956C",
+  "5ª DIREC": "#FFF99C",
+  "6ª DIREC": "#7A7198",
+  "7ª DIREC": "#E87878",
+  "8ª DIREC": "#97AEBE",
+  "9ª DIREC": "#87C127",
+  "10ª DIREC": "#007CC2",
+  "11ª DIREC": "#DA251D",
+  "12ª DIREC": "#FFF420",
+  "13ª DIREC": "#E77917",
+  "14ª DIREC": "#DEDEDC",
+  "15ª DIREC": "#01923F",
+  "16ª DIREC": "#485778",
 };
 
 // Lembre-se de colar os códigos (d="...") do seu SVG aqui
@@ -48,9 +69,16 @@ const fadeUp = {
 export default function Map() {
   const [modalAberto, setModalAberto] = useState(false);
   const [regiaoClicada, setRegiaoClicada] = useState(null);
-  
+
   // Estado para armazenar o centro geométrico da região focada para colocar o número
   const [hoverInfo, setHoverInfo] = useState({ nome: null, x: 0, y: 0 });
+
+  const cardRef = useRef(null);
+
+  const centroides = useMemo(
+    () => Object.fromEntries(pathsSVG.map((r) => [r.nome, getMultiPolygonCentroid(r.d)])),
+    []
+  );
 
   const abrirModal = (nome) => {
     setRegiaoClicada(nome);
@@ -62,13 +90,22 @@ export default function Map() {
     setRegiaoClicada(null);
   };
 
-  const handleMouseEnter = (e, nome) => {
-    // getBBox() pega as dimensões exatas do path no SVG
-    const bbox = e.target.getBBox();
-    const centroX = bbox.x + bbox.width / 2;
-    const centroY = bbox.y + bbox.height / 2;
-    
-    setHoverInfo({ nome, x: centroX, y: centroY });
+  useEffect(() => {
+    if (!modalAberto) return;
+
+    const handleClickFora = (event) => {
+      if (cardRef.current && !cardRef.current.contains(event.target)) {
+        fecharModal();
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickFora);
+    return () => document.removeEventListener("mousedown", handleClickFora);
+  }, [modalAberto]);
+
+  const handleMouseEnter = (nome) => {
+    const centro = centroides[nome] ?? { x: 0, y: 0 };
+    setHoverInfo({ nome, x: centro.x, y: centro.y });
   };
 
   const handleMouseLeave = () => {
@@ -77,97 +114,222 @@ export default function Map() {
 
   // Função para pegar apenas o número (Ex: "1ª DIREC" -> "1")
   const getNumeroDirec = (nome) => {
-    return nome.split("ª")[0];
+    return nome.split('DIREC')[0];
   };
 
   return (
     <div className="w-screen min-h-screen flex flex-col items-center p-8 pb-20 relative overflow-x-hidden bg-[#111111]">
-      
+
       {/* CARD LATERAL (Abre somente no clique) */}
-      <AnimatePresence>
-        {modalAberto && regiaoClicada && (
-          <motion.div 
-            initial={{ opacity: 0, x: 100 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 100 }}
-            transition={{ type: "spring", stiffness: 300, damping: 30 }}
-            className="fixed top-24 right-8 bg-white text-gray-900 p-6 rounded-xl shadow-2xl z-50 w-80"
-          >
-            <h2 className="text-2xl font-extrabold text-[#55C7F0] mb-4 border-b pb-2">
-              {regiaoClicada}
-            </h2>
-            <div className="space-y-2 mb-6">
-              <p><strong className="text-gray-700">Sede:</strong> {infoDirecs[regiaoClicada]?.sede}</p>
-              <p><strong className="text-gray-700">Diretor(a):</strong> {infoDirecs[regiaoClicada]?.diretor}</p>
-            </div>
-            <button 
-              onClick={fecharModal}
-              className="w-full bg-[#333333] hover:bg-[#55C7F0] text-white font-bold py-2 rounded transition-colors duration-300"
-            >
-              Fechar
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* TÍTULO */}
-      <motion.h1
-        initial="hidden"
-        whileInView="visible"
-        viewport={{ once: true }}
-        variants={fadeUp}
-        className="text-5xl font-extrabold text-[#55C7F0] text-center mb-12 max-w-3xl leading-tight"
+      {/* Posicionamento via style inline (não Tailwind): este projeto não tem o Tailwind
+          configurado, então classes como `fixed`/`top-24` nunca tiveram efeito — o card
+          renderizava como conteúdo normal do fluxo, empurrando a página ao abrir. O wrapper
+          fixo usa flex para centralizar verticalmente, deixando a animação de x/opacity do
+          framer-motion livre para controlar o transform do card sem conflito. */}
+      <div
+        style={{
+          position: "fixed",
+          top: 0,
+          right: 0,
+          bottom: 0,
+          display: "flex",
+          alignItems: "center",
+          paddingRight: 32,
+          zIndex: 50,
+          pointerEvents: "none",
+        }}
       >
-        MAPA INTERATIVO DOS PROJETOS
-      </motion.h1>
-
-      {/* MAPA SVG RENDERIZADO DINAMICAMENTE */}
-      <div className="w-full max-w-5xl mx-auto my-5">
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          viewBox="0 0 572.4 350.7" // Ajuste esse viewBox de acordo com o seu SVG original
-          className="w-full h-auto drop-shadow-lg"
-        >
-          {pathsSVG.map((regiao) => (
-            <motion.path
-              key={regiao.nome}
-              d={regiao.d}
-              className="cursor-pointer outline-none"
-              stroke="#ffffff"
-              strokeWidth="1.5"
-              initial={{ fill: "#444444", scale: 1 }}
-              whileHover={{ 
-                fill: "#55C7F0", 
-                scale: 1.02 // Aumento bem sutil
+        <AnimatePresence>
+          {modalAberto && regiaoClicada && (
+            <motion.div
+              ref={cardRef}
+              initial={{ opacity: 0, x: 100 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 100 }}
+              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+              style={{
+                pointerEvents: "auto",
+                background: "#ffffff",
+                color: "#1F2937",
+                borderRadius: 18,
+                boxShadow: "0 24px 48px -16px rgba(14, 42, 94, 0.35)",
+                width: 300,
+                overflow: "hidden",
               }}
-              transition={{ duration: 0.2 }}
-              style={{ 
-                transformOrigin: "center", 
-                transformBox: "fill-box" // Faz o scale ocorrer no centro da própria região, não do mapa
-              }}
-              onMouseEnter={(e) => handleMouseEnter(e, regiao.nome)}
-              onMouseLeave={handleMouseLeave}
-              onClick={() => abrirModal(regiao.nome)}
-            />
-          ))}
-
-          {/* NÚMERO CENTRALIZADO (Renderizado apenas quando houver hover) */}
-          {hoverInfo.nome && (
-            <text
-              x={hoverInfo.x}
-              y={hoverInfo.y}
-              textAnchor="middle"           // Centraliza horizontalmente
-              alignmentBaseline="middle"    // Centraliza verticalmente
-              fill="#111111"                // Cor do número (escuro para dar contraste com o azul)
-              fontSize="14"                 // Tamanho da fonte
-              fontWeight="900"              // Peso da fonte (bem negrito)
-              pointerEvents="none"          // Essencial para o mouse não bugar ao passar pelo texto
             >
-              {getNumeroDirec(hoverInfo.nome)}
-            </text>
+              <div
+                style={{
+                  background: "linear-gradient(135deg, #0E2A5E, #091A3D)",
+                  padding: "16px 16px 16px 18px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 10,
+                }}
+              >
+                <h2
+                  style={{
+                    color: "#ffffff",
+                    fontWeight: 700,
+                    fontSize: 17,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {regiaoClicada}
+                </h2>
+                <button
+                  onClick={fecharModal}
+                  aria-label="Fechar"
+                  style={{
+                    flexShrink: 0,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    width: 26,
+                    height: 26,
+                    background: "rgba(255, 255, 255, 0.1)",
+                    color: "#ffffff",
+                    borderRadius: 7,
+                    border: "none",
+                    cursor: "pointer",
+                    transition: "background-color 0.2s",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = "rgba(255, 255, 255, 0.2)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "rgba(255, 255, 255, 0.1)";
+                  }}
+                >
+                  <svg width="13" height="13" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M1 1L15 15M15 1L1 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                </button>
+              </div>
+              <div style={{ padding: "18px 18px 20px", width: "100%", textAlign: "left" }}>
+              {/* Sede */}
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "flex-start", gap: 8, padding: "12px 0" }}>
+                <div
+                  style={{
+                    flexShrink: 0,
+                    width: 40,
+                    height: 40,
+                    borderRadius: 10,
+                    background: "#EAF4FB",
+                    color: "#2F8FD1",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 21s-7-7.1-7-12a7 7 0 1 1 14 0c0 4.9-7 12-7 12Z" />
+                    <circle cx="12" cy="9" r="2.4" />
+                  </svg>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", textAlign: "left" }}>
+                  <p style={{ margin: 0, fontSize: 12.5, color: "#64748B", marginBottom: 2 }}>Sede</p>
+                  <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: "#1F2937" }}>{infoDirecs[regiaoClicada]?.sede}</p>
+                </div>
+              </div>
+              {/* Diretor */}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  justifyContent: "flex-start",
+                  gap: 8,
+                  padding: "12px 0",
+                  borderTop: "1px solid #E3E8F0",
+                }}
+              >
+                <div
+                  style={{
+                    flexShrink: 0,
+                    width: 40,
+                    height: 40,
+                    borderRadius: 10,
+                    background: "#EAF4FB",
+                    color: "#2F8FD1",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="8" r="3.4" />
+                    <path d="M5 20c0-3.9 3.1-7 7-7s7 3.1 7 7" />
+                  </svg>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", textAlign: "left" }}>
+                  <p style={{ margin: 0, fontSize: 12.5, color: "#64748B", marginBottom: 2 }}>Diretor(a)</p>
+                  <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: "#1F2937" }}>{infoDirecs[regiaoClicada]?.diretor}</p>
+                </div>
+              </div>
+            </div>
+            </motion.div>
           )}
-        </svg>
-      </div>
+      </AnimatePresence>
     </div>
+
+      {/* TÍTULO */ }
+  <motion.h1
+    initial="hidden"
+    whileInView="visible"
+    viewport={{ once: true }}
+    variants={fadeUp}
+    className="text-5xl font-extrabold text-[#55C7F0] text-center mb-12 max-w-3xl leading-tight"
+  >
+    MAPA INTERATIVO DOS PROJETOS
+  </motion.h1>
+
+  {/* MAPA SVG RENDERIZADO DINAMICAMENTE */ }
+  <div className="w-full max-w-5xl mx-auto my-5">
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 572.4 350.7" // Ajuste esse viewBox de acordo com o seu SVG original
+      className="w-full h-auto drop-shadow-lg"
+    >
+      {pathsSVG.map((regiao) => (
+        <motion.path
+          key={regiao.nome}
+          d={regiao.d}
+          className="cursor-pointer outline-none"
+          stroke="#ffffff"
+          strokeWidth="1.5"
+          initial={{ fill: coresDirecs[regiao.nome] ?? "#444444", scale: 1 }}
+          whileHover={{
+            fill: lightenHex(coresDirecs[regiao.nome] ?? "#444444", 0.25),
+            scale: 1.02 // Aumento bem sutil
+          }}
+          transition={{ duration: 0.2 }}
+          style={{
+            transformOrigin: "center",
+            transformBox: "fill-box" // Faz o scale ocorrer no centro da própria região, não do mapa
+          }}
+          onMouseEnter={() => handleMouseEnter(regiao.nome)}
+          onMouseLeave={handleMouseLeave}
+          onClick={() => abrirModal(regiao.nome)}
+        />
+      ))}
+
+      {/* NÚMERO CENTRALIZADO (Renderizado apenas quando houver hover) */}
+      {hoverInfo.nome && (
+        <text
+          x={hoverInfo.x}
+          y={hoverInfo.y}
+          textAnchor="middle"           // Centraliza horizontalmente
+          alignmentBaseline="middle"    // Centraliza verticalmente
+          fill="#111111"                // Cor do número (escuro para dar contraste com o azul)
+          fontSize="14"                 // Tamanho da fonte
+          fontWeight="900"              // Peso da fonte (bem negrito)
+          pointerEvents="none"          // Essencial para o mouse não bugar ao passar pelo texto
+        >
+          {getNumeroDirec(hoverInfo.nome)}
+        </text>
+      )}
+    </svg>
+  </div>
+    </div >
   );
 }
