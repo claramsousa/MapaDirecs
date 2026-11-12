@@ -280,7 +280,7 @@ export default function Map() {
     variants={fadeUp}
     className="text-5xl font-extrabold text-[#55C7F0] text-center mb-12 max-w-3xl leading-tight"
   >
-    MAPA INTERATIVO DOS PROJETOS
+    MAPA INTERATIVO DAS DIRECS
   </motion.h1>
 
   {/* MAPA SVG RENDERIZADO DINAMICAMENTE */ }
